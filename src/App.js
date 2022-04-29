@@ -2,9 +2,12 @@ import "./App.css";
 import { useState } from "react";
 import yaml from "js-yaml";
 import manifest from "./manifest";
-import { parse } from "postcss";
+import evaluate from "./utils/logicParser";
 
 const json = yaml.load(manifest);
+
+const SHOW_JSON = false;
+const SHOW_STATE = false;
 
 function App() {
   const startingState = json.fields.reduce((acc, { name }) => {
@@ -14,50 +17,44 @@ function App() {
 
   const [state, setState] = useState(startingState);
 
-  const parseState = (conditions) => {
-    const parseState = { show: true };
+  const parseState = ({ conditions = {} } = {}, appState) => {
+    const defaults = { show: true, classes: "" };
 
-    if (!conditions) return parseState;
+    const { and, or, state } = conditions;
+    const op = and || or;
+    if (!op) return defaults;
 
-    const { state: conditionState } = conditions;
+    const opName = and ? "and" : "or";
+    const logic = { [opName]: conditions[opName] };
 
-    const op = conditions.or ? "or" : "and";
-    const logic = conditions[op];
+    const areConditionsMet = evaluate(logic, appState);
 
-    let truthy;
-    if (op === "and") {
-      truthy = !logic.some(({ target, value }) => {
-        return state[target] !== value;
-      });
-    } else {
-      truthy = logic.some(({ target, value }) => {
-        return state[target] === value;
-      });
+    if (areConditionsMet) {
+      const { classes = defaults.classes, show = defaults.show } = state;
+      return { ...defaults, classes, show };
     }
 
-    if (truthy) {
-      parseState.classes = conditionState?.classes?.join(" ");
-      if (conditionState.hasOwnProperty("show"))
-        parseState.show = conditionState.show;
-    }
-
-    return parseState;
+    return defaults;
   };
 
   return (
     <div className="flex justify-around ">
-      <div>
-        <h2 className="font-bold underlined">json</h2>
-        <pre>{JSON.stringify(json, null, 2)}</pre>
-      </div>
+      {SHOW_JSON && (
+        <div>
+          <h2 className="font-bold underlined">json</h2>
+          <pre>{JSON.stringify(json, null, 2)}</pre>
+        </div>
+      )}
       <div>
         <h2 className="font-bold underlined ">yaml</h2>
         <pre>{manifest}</pre>
       </div>
       <div>
         <h2 className="font-bold underlined">rendered</h2>
-        {json.fields.map(function ({ name, conditions }) {
-          const parsedState = parseState(conditions);
+        {json.fields.map(function (field) {
+          const { name } = field;
+          const parsedState = parseState(field, state);
+
           return (
             <div key={name} className={`${!parsedState.show ? "hidden" : ""}`}>
               <label className={parsedState.classes}>{name}</label>
@@ -70,10 +67,14 @@ function App() {
           );
         })}
       </div>
-      <div>
-        <h2 className="font-bold underlined">state</h2>
-        <pre>{JSON.stringify(state, null, 2)}</pre>
-      </div>
+      {SHOW_STATE && (
+        <div>
+          <div>
+            <h2 className="font-bold underlined">state</h2>
+            <pre>{JSON.stringify(state, null, 2)}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
